@@ -1,17 +1,5 @@
 # Parallel Claude Code Sessions Without Git Conflicts
 
-## (Side Note) What's a jj workspace?
-
-It's simply a different directory that uses the same jj repository and shared history. From your perspective, it looks like having several "clones" of the same project, but moving commits between them is much easier than if you had cloned multiple times. You can easily try it yourself:
-
-```bash
-cd my-project
-jj workspace add /some/path/to/somewhere
-# clean up again
-jj workspace forget somewhere # directory name is the workspace name
-rm -rf /some/path/to/somewhere
-```
-
 ## How I run multiple AI sessions on the same repo using jj workspaces
 
 We've been using Claude Code heavily on our BDD test framework - and quickly hit a wall. One Claude instance per repo just isn't enough when you're juggling multiple tasks. You want one session refactoring the auth module while another writes tests and a third fixes that production bug someone just reported.
@@ -58,6 +46,20 @@ When you run `claude` in a project configured for workspace isolation:
 3. Otherwise, `workspace-claude` launcher creates a new isolated workspace
 4. Setup runs automatically (`jj git fetch`, `uv sync`, etc.)
 5. Claude starts in the fresh, isolated environment
+
+---
+
+## (Side Note) What's a jj workspace?
+
+It's simply a different directory that uses the same jj repository and shared history. From your perspective, it looks like having several "clones" of the same project, but moving commits between them is much easier than if you had cloned multiple times. You can easily try it yourself:
+
+```bash
+cd my-project
+jj workspace add /some/path/to/somewhere
+# clean up again
+jj workspace forget somewhere # directory name is the workspace name
+rm -rf /some/path/to/somewhere
+```
 
 ---
 
