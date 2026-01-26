@@ -8,16 +8,20 @@ The problem? Out of the box, this doesn't work. Write locks block parallel sessi
 
 We solved this using jj (Jujutsu) workspaces. Each Claude session gets its own isolated working directory with its own `.venv`, but they all share the same git history. No locks, no conflicts, no accidental cross-contamination of changes. Just spin up as many Claude sessions as you need.
 
-```
+```bash
 # Terminal 1
 cd myproject && claude
-→ Creates workspace session-20260121-143052-a1b2, launches Claude
+→ Creates workspace session-20260121143052-a1b2, launches Claude
 
 # Terminal 2
 cd myproject && claude
-→ Creates workspace session-20260121-143058-c3d4, launches Claude
+→ Creates workspace session-20260121143058-c3d4, launches Claude
 
 # Both work independently, no conflicts
+
+# Later: Resume a previous session
+workspace-claude --sessions          # List all sessions with context
+workspace-claude --resume a1b2       # Resume by prefix
 ```
 
 ---
@@ -143,6 +147,48 @@ jj workspaces are "first-class citizens" - creating and managing them is seamles
 
 ---
 
+## New in v2.0 (Jan 2026)
+
+### Session Resume
+
+```bash
+workspace-claude --sessions          # List sessions with claude-mem context
+workspace-claude --resume a8f5       # Resume session by prefix
+```
+
+### Session Protection
+
+```bash
+workspace-claude --keep a8f5         # Protect from auto-cleanup
+workspace-claude --unkeep a8f5       # Remove protection
+```
+
+### Workday-Based Cleanup
+
+Instead of fixed 24h, cleanup now uses workdays (Mon-Fri):
+
+```bash
+KEEP_WORKDAYS=2  # Default: Keep sessions from last 2 workdays
+```
+
+**Friday sessions survive the weekend!** On Monday, Friday sessions are still within the 2-workday window.
+
+### Session Metadata
+
+Each workspace now has `.session-meta.json`:
+
+```json
+{
+  "created": "2026-01-26T08:30:02Z",
+  "last_active": "2026-01-26T09:15:00Z",
+  "description": "",
+  "keep": false,
+  "session_id": "session-20260126083002-a8f5"
+}
+```
+
+---
+
 ## Quick Start
 
 See the separate setup file for complete installation instructions:
@@ -159,4 +205,4 @@ cd your-project && jj git init --colocate
 
 ---
 
-*Last updated: 2026-01-21*
+*Last updated: 2026-01-26*
