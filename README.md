@@ -194,13 +194,31 @@ Each workspace now has `.session-meta.json`:
 See the separate setup file for complete installation instructions:
 **[workspace-isolation-setup.md](./workspace-isolation-setup.md)**
 
-TL;DR:
+### macOS
 ```bash
-brew install jj
+brew install jj jq
 cd your-project && jj git init --colocate
-# Copy the workspace-claude script to ~/.local/bin/
+curl -o ~/.local/bin/workspace-claude https://raw.githubusercontent.com/Benniphx/workspace-isolation-guide/main/workspace-claude
+chmod +x ~/.local/bin/workspace-claude
 # Add shell function to ~/.zshrc
-# Done - `claude` now auto-creates isolated workspaces
+```
+
+### Linux (Arch/CachyOS)
+```bash
+sudo pacman -S jj git jq sqlite
+cd your-project && jj git init --colocate
+curl -o ~/.local/bin/workspace-claude https://raw.githubusercontent.com/Benniphx/workspace-isolation-guide/main/workspace-claude
+chmod +x ~/.local/bin/workspace-claude
+# Add shell function to ~/.bashrc or ~/.zshrc
+```
+
+### Linux (Ubuntu/Debian)
+```bash
+# jj via cargo or download binary from https://github.com/martinvonz/jj/releases
+sudo apt install git jq sqlite3
+cd your-project && jj git init --colocate
+curl -o ~/.local/bin/workspace-claude https://raw.githubusercontent.com/Benniphx/workspace-isolation-guide/main/workspace-claude
+chmod +x ~/.local/bin/workspace-claude
 ```
 
 ---

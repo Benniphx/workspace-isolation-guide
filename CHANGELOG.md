@@ -5,6 +5,39 @@
 **Tested with Claude Code:** 2.1.19
 **Last checked:** 2026-01-26
 
+### Platform Support
+
+| Platform | Status | Notes |
+|----------|--------|-------|
+| macOS (ARM/Intel) | ✅ Tested | Primary development platform |
+| Linux (Arch/CachyOS) | ✅ Compatible | All commands have GNU fallbacks |
+| Linux (Ubuntu/Debian) | ✅ Compatible | Tested with GNU coreutils |
+| WSL2 | 🔄 Should work | Not explicitly tested |
+
+### Linux Requirements (Arch/CachyOS)
+
+```bash
+# Install dependencies
+sudo pacman -S jj git jq sqlite
+
+# Optional: mise for tool management
+curl https://mise.run | sh
+
+# Install Claude Code
+# (Check Anthropic docs for Linux installation)
+```
+
+### Cross-Platform Commands
+
+The script handles macOS vs Linux differences:
+
+| Command | macOS | Linux (GNU) |
+|---------|-------|-------------|
+| stat mtime | `stat -f %m` | `stat -c %Y` |
+| date from timestamp | `date -r $ts` | `date -d @$ts` |
+| date parse | `date -j -f "%Y-%m-%d"` | `date -d "$date"` |
+| sed in-place | `sed -i.bak` | `sed -i.bak` (compatible) |
+
 ### Claude Code Features We Rely On
 
 | Feature | Since | Our Usage |
