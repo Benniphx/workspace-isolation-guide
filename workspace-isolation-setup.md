@@ -506,10 +506,15 @@ claude() {
         fi
     done
 
-    # Not an isolated project - use normal claude
-    command claude "$@"
+    # Not an isolated project - use normal claude with auto-accept permissions
+    # Remove --dangerously-skip-permissions if you prefer the trust dialog
+    command claude --dangerously-skip-permissions "$@"
 }
 ```
+
+> **Note:** The `--dangerously-skip-permissions` flag skips the permission/trust dialog.
+> This is safe for your own projects where you trust the CLAUDE.md and settings files.
+> Remove this flag if you work on untrusted codebases.
 
 After saving:
 
@@ -624,4 +629,4 @@ export BEADS_DIR="$PROJECT_ROOT/.beads"
 
 ---
 
-*Last updated: 2026-01-26*
+*Last updated: 2026-01-28*
