@@ -534,6 +534,11 @@ create_workspace() {
         npm install >/dev/null 2>&1 || log_warn "npm install failed"
     fi
 
+    # Remove macOS extended attributes that block Python execution in sandbox
+    # (com.apple.provenance is set when files are copied and can cause [Errno 1])
+    find "$workspace_path/.claude" -name "*.py" -exec xattr -d com.apple.provenance {} \; 2>/dev/null || true
+    find "$workspace_path/.claude" -name "*.sh" -exec xattr -d com.apple.provenance {} \; 2>/dev/null || true
+
     log_info "Workspace ready: $workspace_path"
     echo "$workspace_path"
 }
