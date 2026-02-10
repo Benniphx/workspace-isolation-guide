@@ -1,6 +1,6 @@
 #!/bin/bash
 # workspace-claude - Launch Claude in isolated jj workspace
-# Version: 2.0.0 (2026-01-26)
+# Version: 2.1.0 (2026-02-10)
 # Tested with: Claude Code 2.1.19
 # Source: https://github.com/Benniphx/workspace-isolation-guide
 #
@@ -20,7 +20,7 @@
 
 set -euo pipefail
 
-WORKSPACE_CLAUDE_VERSION="2.0.0"
+WORKSPACE_CLAUDE_VERSION="2.1.0"
 WORKSPACE_CLAUDE_TESTED_WITH="2.1.19"
 
 # Auto-detect project root (first parent with .jj or .git)
@@ -440,6 +440,11 @@ resume_session() {
 cleanup_old_workspaces() {
     [[ -d "$WORKSPACES_DIR" ]] || return 0
 
+    # Auto-recover stale working copy before cleanup (uses jj workspace forget)
+    if jj st 2>&1 | grep -q "working copy is stale"; then
+        jj workspace update-stale 2>/dev/null || true
+    fi
+
     local count=0
     local skipped=0
     local cutoff_ts
@@ -505,8 +510,28 @@ create_workspace() {
     log_info "Creating workspace: $workspace_name (based on $base_rev)"
 
     cd "$PROJECT_ROOT"
+
+    # Auto-recover stale working copy (happens when other workspaces modify the repo)
+    # Note: jj config `snapshot.auto-update-stale = true` handles this globally,
+    # but we keep explicit recovery as defense-in-depth for safety.
+    if jj st 2>&1 | grep -q "working copy is stale"; then
+        log_info "Recovering stale working copy..."
+        jj workspace update-stale 2>/dev/null || log_warn "Could not update stale working copy"
+    fi
+
     log_info "Fetching latest..."
-    jj git fetch 2>/dev/null || log_warn "Could not fetch"
+    jj git fetch 2>/dev/null || {
+        # Fallback: fetch without working copy interaction
+        jj --ignore-working-copy git fetch 2>/dev/null || log_warn "Could not fetch"
+    }
+
+    # Update local main bookmark to match origin (jj fetch doesn't do this automatically)
+    if [[ "$base_rev" == "main" ]]; then
+        log_info "Syncing main to origin..."
+        jj bookmark set main -r main@origin 2>/dev/null || \
+            jj --ignore-working-copy bookmark set main -r main@origin 2>/dev/null || \
+            log_warn "Could not sync main"
+    fi
 
     jj workspace add "$workspace_path" -r "$base_rev" 2>/dev/null || {
         log_error "Failed to create workspace"
@@ -562,7 +587,7 @@ list_workspaces() {
 
     echo ""
     echo "jj workspaces:"
-    (cd "$PROJECT_ROOT" && jj workspace list 2>/dev/null) || echo "  (not a jj repo)"
+    (cd "$PROJECT_ROOT" && jj workspace update-stale 2>/dev/null; jj workspace list 2>/dev/null) || echo "  (not a jj repo)"
 }
 
 remove_workspace() {
