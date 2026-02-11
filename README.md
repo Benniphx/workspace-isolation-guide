@@ -151,19 +151,21 @@ jj workspaces are "first-class citizens" - creating and managing them is seamles
 
 ### Startup Summary
 
-When launching or resuming a workspace, you now get a full context overview:
+When launching or resuming a workspace, you get a unified context overview:
 
 ```
+🚀 Project:   spex
+🏷️  Session:   20260211151717-e94c (base: main)
 📁 Workspace: /path/to/workspace
-📋 Beads: /path/.beads (central)
-🧠 Memory: symlinked → global (3 files)
-🐍 Python: .venv ready (3.12.8)
-🔀 jj: @kpqvuntx (on main)
+📋 Beads:     /path/.beads (central)
+🧠 Memory:    symlinked → global (4 files)
+🐍 Python:    .venv ready (3.13.6)
+🔀 jj:        @kpqvuntx (on main)
 📄 CLAUDE.md: found
-🔧 Tools: mise 2025.1.0, direnv 2.34.0
+🔧 Tools:     mise 2026.2.9, direnv 2.37.1
 ```
 
-This replaces the minimal 2-line output from previous versions and gives you immediate visibility into the workspace state before Claude starts.
+All lines use the same `emoji + label + value` format for a clean, consistent look.
 
 ---
 

@@ -484,18 +484,12 @@ resume_session() {
 
     local session_id=$(basename "$workspace_path")
 
-    echo "🔄 Resuming Workspace Session"
-    echo "   Project: $PROJECT_NAME"
-    echo "   Session: ${session_id#session-}"
-    [[ -n "$session_uuid" ]] && echo "   UUID: ${session_uuid:0:8}..."
-    echo ""
-
     # Update last_active
     if [[ -f "${workspace_path}/.session-meta.json" ]]; then
         update_session_meta "$workspace_path" "last_active" "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
     fi
 
-    print_startup_summary "$workspace_path"
+    print_startup_summary "$workspace_path" "${session_id#session-}" "" "$session_uuid"
     echo ""
 
     cd "$workspace_path"
@@ -701,13 +695,28 @@ setup_memory_symlink() {
 
 print_startup_summary() {
     local workspace_path="$1"
+    local session_label="${2:-}"
+    local base_rev="${3:-}"
+    local session_uuid="${4:-}"
 
+    echo ""
+
+    # Project + Session
+    echo "🚀 Project:   $PROJECT_NAME"
+    if [[ -n "$session_label" ]]; then
+        local session_line="🏷️  Session:   $session_label"
+        [[ -n "$base_rev" ]] && session_line+=" (base: $base_rev)"
+        [[ -n "$session_uuid" ]] && session_line+=" [${session_uuid:0:8}…]"
+        echo "$session_line"
+    fi
+
+    # Workspace
     echo "📁 Workspace: $workspace_path"
 
     # Beads
     if [[ -d "$PROJECT_ROOT/.beads" ]]; then
         export BEADS_DIR="$PROJECT_ROOT/.beads"
-        echo "📋 Beads: $BEADS_DIR (central)"
+        echo "📋 Beads:     $BEADS_DIR (central)"
     fi
 
     # Memory
@@ -717,13 +726,13 @@ print_startup_summary() {
     if [[ -L "$memory_dir" ]]; then
         local file_count
         file_count=$(find -L "$memory_dir" -type f 2>/dev/null | wc -l | tr -d ' ')
-        echo "🧠 Memory: symlinked → global ($file_count files)"
+        echo "🧠 Memory:    symlinked → global ($file_count files)"
     elif [[ -d "$memory_dir" ]]; then
         local file_count
         file_count=$(find "$memory_dir" -type f 2>/dev/null | wc -l | tr -d ' ')
-        echo "🧠 Memory: local ($file_count files)"
+        echo "🧠 Memory:    local ($file_count files)"
     else
-        echo "🧠 Memory: not configured"
+        echo "🧠 Memory:    not configured"
     fi
 
     # Python / Node environment
@@ -731,17 +740,17 @@ print_startup_summary() {
         if [[ -d "$workspace_path/.venv" ]]; then
             local py_version
             py_version=$("$workspace_path/.venv/bin/python" --version 2>/dev/null | grep -o '[0-9]\+\.[0-9]\+\.[0-9]\+' || echo "?")
-            echo "🐍 Python: .venv ready ($py_version)"
+            echo "🐍 Python:    .venv ready ($py_version)"
         else
-            echo "🐍 Python: missing .venv"
+            echo "🐍 Python:    missing .venv"
         fi
     elif [[ -f "$workspace_path/package.json" ]]; then
         if [[ -d "$workspace_path/node_modules" ]]; then
             local node_version
             node_version=$(node --version 2>/dev/null || echo "?")
-            echo "📦 Node: node_modules ready ($node_version)"
+            echo "📦 Node:      node_modules ready ($node_version)"
         else
-            echo "📦 Node: missing node_modules"
+            echo "📦 Node:      missing node_modules"
         fi
     fi
 
@@ -750,7 +759,7 @@ print_startup_summary() {
         local change_id bookmark_info jj_line
         change_id=$(cd "$workspace_path" && jj log -r @ --no-graph -T 'change_id.short()' 2>/dev/null || echo "?")
         bookmark_info=$(cd "$workspace_path" && jj log -r @ --no-graph -T 'bookmarks' 2>/dev/null || echo "")
-        jj_line="🔀 jj: @${change_id}"
+        jj_line="🔀 jj:        @${change_id}"
         if [[ -n "$bookmark_info" ]]; then
             jj_line+=" (${bookmark_info})"
         else
@@ -774,8 +783,7 @@ print_startup_summary() {
     [[ -n "$mise_ver" ]] && tools_parts+=("mise $mise_ver")
     [[ -n "$direnv_ver" ]] && tools_parts+=("direnv $direnv_ver")
     if [[ ${#tools_parts[@]} -gt 0 ]]; then
-        local IFS=', '
-        echo "🔧 Tools: ${tools_parts[*]}"
+        echo "🔧 Tools:     $(printf '%s' "${tools_parts[0]}")$(printf ', %s' "${tools_parts[@]:1}" 2>/dev/null || true)"
     fi
 }
 
@@ -886,12 +894,6 @@ case "$ACTION" in
     run)
         session_id="$(date +%Y%m%d%H%M%S)-$(openssl rand -hex 4)"
 
-        echo "🚀 Workspace Claude Launcher"
-        echo "   Project: $PROJECT_NAME"
-        echo "   Session: ${session_id:0:19}"
-        echo "   Base: $BASE_REV"
-        echo ""
-
         workspace_path=$(create_workspace "$session_id" "$BASE_REV")
 
         if [[ ! -d "$workspace_path" ]]; then
@@ -899,8 +901,7 @@ case "$ACTION" in
             exit 1
         fi
 
-        echo ""
-        print_startup_summary "$workspace_path"
+        print_startup_summary "$workspace_path" "${session_id:0:19}" "$BASE_REV"
         echo ""
 
         cd "$workspace_path"

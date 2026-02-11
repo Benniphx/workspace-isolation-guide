@@ -60,6 +60,7 @@ The script handles macOS vs Linux differences:
 
 ### Added
 - Enhanced startup summary via `print_startup_summary()` function
+- Shows project name, session ID, base revision, and optional UUID
 - Shows memory status (symlinked/local/not configured + file count)
 - Shows Python/Node environment status with version
 - Shows jj change-id and bookmark info
@@ -67,8 +68,10 @@ The script handles macOS vs Linux differences:
 - Shows mise/direnv tool versions
 
 ### Changed
-- `run` and `resume_session()` both use shared `print_startup_summary()` instead of manual echo lines
-- Startup output now shows 7 status lines instead of 2
+- `run` and `resume_session()` both use shared `print_startup_summary()` instead of separate header blocks
+- Unified output format: all lines use consistent `emoji + aligned label + value` style
+- Removed multi-line header blocks from both run and resume paths
+- Fixed Tools line comma spacing (was missing space after comma)
 
 ---
 
