@@ -41,9 +41,9 @@ PROJECT_NAME="$(basename "$PROJECT_ROOT")"
 WORKSPACES_DIR="${PROJECT_ROOT}-workspaces"
 KEEP_WORKDAYS="${KEEP_WORKDAYS:-14}"  # Keep sessions from last N workdays (Mon-Fri)
 
-log_info() { echo -e "\033[0;32m[workspace]\033[0m $1" >&2; }
-log_warn() { echo -e "\033[1;33m[workspace]\033[0m $1" >&2; }
-log_error() { echo -e "\033[0;31m[workspace]\033[0m $1" >&2; }
+log_info() { echo -e "  \033[0;32m▸\033[0m $1" >&2; }
+log_warn() { echo -e "  \033[1;33m▸\033[0m $1" >&2; }
+log_error() { echo -e "  \033[0;31m✖\033[0m $1" >&2; }
 
 show_help() {
     cat << 'EOF'
