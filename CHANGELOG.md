@@ -3,7 +3,7 @@
 ## Compatibility
 
 **Tested with Claude Code:** 2.1.19
-**Last checked:** 2026-01-26
+**Last checked:** 2026-02-11
 
 ### Platform Support
 
@@ -53,6 +53,31 @@ The script handles macOS vs Linux differences:
 |---------|-----|--------|
 | 2.1.19 | Fixed `/rename` and `/tag` in different directories | No action needed - native fix |
 | 2.1.19 | Fixed resuming by title from different directory | No action needed - native fix |
+
+---
+
+## [2.2.0] - 2026-02-11
+
+### Added
+- UUID-based session resume: `workspace-claude --resume <claude-session-uuid>`
+- Shell function `_resolve_claude_session()` in `~/.zshrc` - resolves UUID to workspace path
+- `resolve_session_uuid()` in workspace-claude script
+- `--sessions` now shows Claude session UUID (truncated to 8 chars)
+- `claude --resume <uuid>` auto-resolves workspace and cd's there before resuming
+
+### Changed
+- `resume_session()` now accepts both workspace prefix and Claude session UUID
+- When resuming by UUID, passes `--resume <uuid>` to Claude for exact session restore
+- Help text updated with UUID examples
+
+---
+
+## [2.1.0] - 2026-02-10
+
+### Added
+- Auto-recovery from stale jj working copy in `create_workspace`, `cleanup_old_workspaces`
+- `--ignore-working-copy` fallback for `jj git fetch` and `jj bookmark set`
+- `--version` flag showing workspace-claude and Claude Code versions
 
 ---
 

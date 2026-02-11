@@ -1,26 +1,26 @@
 #!/bin/bash
 # workspace-claude - Launch Claude in isolated jj workspace
-# Version: 2.1.0 (2026-02-10)
+# Version: 2.2.0 (2026-02-11)
 # Tested with: Claude Code 2.1.19
 # Source: https://github.com/Benniphx/workspace-isolation-guide
 #
 # Usage: workspace-claude [options] [claude-args...]
 #
 # Options:
-#   --branch <rev>    Base workspace on specific revision (default: main)
-#   --list            List active workspaces with age
-#   --sessions        List sessions with filtered user sessions
-#   --resume <prefix> Resume session by prefix (e.g., --resume a8f5)
-#   --keep <prefix>   Protect session from cleanup
-#   --unkeep <prefix> Remove protection from session
-#   --cleanup         Remove old workspaces (respects workday logic)
-#   --remove <name>   Remove specific workspace
-#   --version         Show version and Claude Code compatibility
-#   --help            Show this help message
+#   --branch <rev>        Base workspace on specific revision (default: main)
+#   --list                List active workspaces with age
+#   --sessions            List sessions with filtered user sessions
+#   --resume <prefix|uuid> Resume session by workspace prefix OR Claude session UUID
+#   --keep <prefix>       Protect session from cleanup
+#   --unkeep <prefix>     Remove protection from session
+#   --cleanup             Remove old workspaces (respects workday logic)
+#   --remove <name>       Remove specific workspace
+#   --version             Show version and Claude Code compatibility
+#   --help                Show this help message
 
 set -euo pipefail
 
-WORKSPACE_CLAUDE_VERSION="2.1.0"
+WORKSPACE_CLAUDE_VERSION="2.2.0"
 WORKSPACE_CLAUDE_TESTED_WITH="2.1.19"
 
 # Auto-detect project root (first parent with .jj or .git)
@@ -39,7 +39,7 @@ find_project_root() {
 PROJECT_ROOT="$(find_project_root)"
 PROJECT_NAME="$(basename "$PROJECT_ROOT")"
 WORKSPACES_DIR="${PROJECT_ROOT}-workspaces"
-KEEP_WORKDAYS="${KEEP_WORKDAYS:-2}"  # Keep sessions from last N workdays (Mon-Fri)
+KEEP_WORKDAYS="${KEEP_WORKDAYS:-14}"  # Keep sessions from last N workdays (Mon-Fri)
 
 log_info() { echo -e "\033[0;32m[workspace]\033[0m $1" >&2; }
 log_warn() { echo -e "\033[1;33m[workspace]\033[0m $1" >&2; }
@@ -53,26 +53,27 @@ USAGE:
     workspace-claude [options] [claude-args...]
 
 OPTIONS:
-    --branch <rev>    Base workspace on specific revision (default: main)
-    --list            List active workspaces with filesystem age
-    --sessions        List sessions with claude-mem context (richer info)
-    --resume <prefix> Resume existing session by prefix (e.g., --resume a8f5)
-    --keep <prefix>   Protect session from automatic cleanup
-    --unkeep <prefix> Remove protection from session
-    --cleanup         Remove old workspaces (respects workday logic + keep flag)
-    --remove <name>   Remove specific workspace
-    --help            Show this help message
+    --branch <rev>        Base workspace on specific revision (default: main)
+    --list                List active workspaces with filesystem age
+    --sessions            List sessions with Claude session UUIDs
+    --resume <id>         Resume session by workspace prefix OR Claude session UUID
+    --keep <prefix>       Protect session from automatic cleanup
+    --unkeep <prefix>     Remove protection from session
+    --cleanup             Remove old workspaces (respects workday logic + keep flag)
+    --remove <name>       Remove specific workspace
+    --help                Show this help message
 
 ENVIRONMENT:
     KEEP_WORKDAYS     Number of workdays to keep sessions (default: 2)
                       Workdays = Mon-Fri, so Friday sessions survive Monday cleanup
 
 EXAMPLES:
-    workspace-claude                    # Start new session
-    workspace-claude --sessions         # List sessions with context
-    workspace-claude --resume a8f5      # Resume session by prefix
-    workspace-claude --keep a8f5        # Protect session from cleanup
-    workspace-claude --branch feat/x    # Start from specific branch
+    workspace-claude                              # Start new session
+    workspace-claude --sessions                   # List sessions with UUIDs
+    workspace-claude --resume a8f5                # Resume by workspace prefix
+    workspace-claude --resume 18fcd521-0457-...   # Resume by Claude session UUID
+    workspace-claude --keep a8f5                  # Protect session from cleanup
+    workspace-claude --branch feat/x              # Start from specific branch
 
 SESSION METADATA:
     Each workspace has a .session-meta.json with:
@@ -229,6 +230,25 @@ find_workspace_by_prefix() {
     echo "${matches[0]}"
 }
 
+# Resolve Claude session UUID → workspace path via sessions-index.json
+resolve_session_uuid() {
+    local uuid="$1"
+    local claude_projects_dir="$HOME/.claude/projects"
+    command -v jq &>/dev/null || { log_error "jq required for UUID resolution"; return 1; }
+    for index_file in "$claude_projects_dir"/*/sessions-index.json; do
+        [[ -f "$index_file" ]] || continue
+        local path
+        path=$(jq -r --arg id "$uuid" \
+            '.entries[] | select(.sessionId == $id) | .projectPath' \
+            "$index_file" 2>/dev/null | head -1)
+        if [[ -n "$path" && "$path" != "null" && -d "$path" ]]; then
+            echo "$path"
+            return 0
+        fi
+    done
+    return 1
+}
+
 # Set/unset keep flag on session
 keep_session() {
     local prefix="$1"
@@ -288,8 +308,8 @@ list_sessions() {
     echo "$PROJECT_NAME Workspace Sessions"
     echo "=================================="
     echo ""
-    printf "  %-19s | %-7s | %-11s | %-4s | %-6s | %s\n" "Workspace" "Status" "Modified" "Msgs" "Keep" "First Prompt"
-    printf "  %-19s-+-%-7s-+-%-11s-+-%-4s-+-%-6s-+-%s\n" "-------------------" "-------" "-----------" "----" "------" "----------------------------------------"
+    printf "  %-19s | %-8s | %-7s | %-11s | %-4s | %-6s | %s\n" "Workspace" "UUID" "Status" "Modified" "Msgs" "Keep" "First Prompt"
+    printf "  %-19s-+-%-8s-+-%-7s-+-%-11s-+-%-4s-+-%-6s-+-%s\n" "-------------------" "--------" "-------" "-----------" "----" "------" "----------------------------------------"
 
     local sessions_found=false
     local claude_projects_dir="$HOME/.claude/projects"
@@ -319,12 +339,12 @@ list_sessions() {
 
         # Parse sessions-index.json for real user sessions (only show most recent per workspace)
         if command -v jq &>/dev/null; then
-            local best_session=""
+            local best_session_uuid=""
             local best_msg_count=0
             local best_modified=""
             local best_prompt=""
 
-            while IFS='|' read -r first_prompt msg_count modified; do
+            while IFS='|' read -r session_uuid first_prompt msg_count modified; do
                 [[ -z "$first_prompt" ]] && continue
 
                 # Filter out memory-observer and sub-agent sessions
@@ -334,12 +354,13 @@ list_sessions() {
 
                 # Keep the session with most messages (likely the main conversation)
                 if [[ "${msg_count:-0}" -gt "$best_msg_count" ]]; then
+                    best_session_uuid="$session_uuid"
                     best_msg_count="$msg_count"
                     best_modified="$modified"
                     best_prompt="$first_prompt"
                 fi
 
-            done < <(jq -r '.entries[] | "\(.firstPrompt | gsub("\n"; " ")[:100])|\(.messageCount)|\(.modified)"' "$index_file" 2>/dev/null)
+            done < <(jq -r '.entries[] | "\(.sessionId)|\(.firstPrompt | gsub("\n"; " ")[:100])|\(.messageCount)|\(.modified)"' "$index_file" 2>/dev/null)
 
             # Only show if we found a valid session
             if [[ -n "$best_prompt" ]]; then
@@ -348,20 +369,23 @@ list_sessions() {
                 # Format date from ISO timestamp
                 local mod_date=$(echo "$best_modified" | cut -d'T' -f1)
 
+                # Truncate UUID to 8 chars for display
+                local uuid_short="${best_session_uuid:0:8}"
+
                 # Truncate first prompt for display
                 local prompt_preview="${best_prompt:0:40}"
                 [[ ${#best_prompt} -gt 40 ]] && prompt_preview="${prompt_preview}..."
 
-                printf "  %-19s | %-7s | %-11s | %4s | %-6s | %s\n" \
-                    "$short_id" "$ws_status" "$mod_date" "$best_msg_count" "$keep_flag" "$prompt_preview"
+                printf "  %-19s | %-8s | %-7s | %-11s | %4s | %-6s | %s\n" \
+                    "$short_id" "$uuid_short" "$ws_status" "$mod_date" "$best_msg_count" "$keep_flag" "$prompt_preview"
             fi
         else
             # Fallback without jq - just show workspace exists
             sessions_found=true
             local date_part="${short_id:0:8}"
             local formatted_date="${date_part:0:4}-${date_part:4:2}-${date_part:6:2}"
-            printf "  %-19s | %-7s | %-11s | %4s | %-6s | %s\n" \
-                "$short_id" "$ws_status" "$formatted_date" "?" "$keep_flag" "(install jq for details)"
+            printf "  %-19s | %-8s | %-7s | %-11s | %4s | %-6s | %s\n" \
+                "$short_id" "?" "$ws_status" "$formatted_date" "?" "$keep_flag" "(install jq for UUIDs)"
         fi
     done
 
@@ -383,8 +407,8 @@ list_sessions() {
             local date_part="${short_id:0:8}"
             local formatted_date="${date_part:0:4}-${date_part:4:2}-${date_part:6:2}"
 
-            printf "  %-19s | %-7s | %-11s | %4s | %-6s | %s\n" \
-                "$short_id" "new" "$formatted_date" "0" "$keep_flag" "(no sessions yet)"
+            printf "  %-19s | %-8s | %-7s | %-11s | %4s | %-6s | %s\n" \
+                "$short_id" "-" "new" "$formatted_date" "0" "$keep_flag" "(no sessions yet)"
         done
     fi
 
@@ -395,23 +419,36 @@ list_sessions() {
     echo ""
     echo "Legend: active = workspace exists, orphan = workspace deleted, new = no Claude sessions yet"
     echo ""
-    echo "Resume with: workspace-claude --resume <prefix>"
+    echo "Resume by prefix: workspace-claude --resume <prefix>"
+    echo "Resume by UUID:   workspace-claude --resume <full-uuid>  (or: claude --resume <uuid>)"
 }
 
 # Resume existing session
 resume_session() {
-    local prefix="$1"
+    local identifier="$1"
     shift
     local claude_args=("$@")
 
     local workspace_path
-    workspace_path=$(find_workspace_by_prefix "$prefix") || return 1
+    local session_uuid=""
+
+    # UUID-Format erkennen (8-4-4-4-12 hex)
+    if [[ "$identifier" =~ ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$ ]]; then
+        session_uuid="$identifier"
+        workspace_path=$(resolve_session_uuid "$identifier") || {
+            log_error "No workspace found for session UUID: $identifier"
+            return 1
+        }
+    else
+        workspace_path=$(find_workspace_by_prefix "$identifier") || return 1
+    fi
 
     local session_id=$(basename "$workspace_path")
 
     echo "🔄 Resuming Workspace Session"
     echo "   Project: $PROJECT_NAME"
     echo "   Session: ${session_id#session-}"
+    [[ -n "$session_uuid" ]] && echo "   UUID: ${session_uuid:0:8}..."
     echo ""
 
     # Update last_active
@@ -433,8 +470,12 @@ resume_session() {
     eval "$(mise activate bash 2>/dev/null)" || true
     direnv allow 2>/dev/null || true
 
-    # Resume with --resume flag to continue conversation
-    exec command claude --dangerously-skip-permissions --resume ${claude_args[@]+"${claude_args[@]}"}
+    # Bei UUID den --resume mit UUID weitergeben, sonst nur --resume
+    if [[ -n "$session_uuid" ]]; then
+        exec command claude --dangerously-skip-permissions --resume "$session_uuid" ${claude_args[@]+"${claude_args[@]}"}
+    else
+        exec command claude --dangerously-skip-permissions --resume ${claude_args[@]+"${claude_args[@]}"}
+    fi
 }
 
 cleanup_old_workspaces() {

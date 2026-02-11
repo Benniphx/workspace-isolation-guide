@@ -152,8 +152,10 @@ jj workspaces are "first-class citizens" - creating and managing them is seamles
 ### Session Resume
 
 ```bash
-workspace-claude --sessions          # List sessions with claude-mem context
-workspace-claude --resume a8f5       # Resume session by prefix
+workspace-claude --sessions          # List sessions with UUIDs
+workspace-claude --resume a8f5       # Resume by workspace prefix
+workspace-claude --resume 18fcd521-0457-...  # Resume by Claude session UUID
+claude --resume 18fcd521-0457-...    # Auto-resolves workspace from UUID
 ```
 
 ### Session Protection
@@ -223,4 +225,4 @@ chmod +x ~/.local/bin/workspace-claude
 
 ---
 
-*Last updated: 2026-01-26*
+*Last updated: 2026-02-11*

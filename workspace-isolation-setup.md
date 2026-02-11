@@ -46,7 +46,7 @@ cat > ~/.local/bin/workspace-claude << 'EOF'
 #   --branch <rev>    Base workspace on specific revision (default: main)
 #   --list            List active workspaces with age
 #   --sessions        List sessions with claude-mem context
-#   --resume <prefix> Resume session by prefix (e.g., --resume a8f5)
+#   --resume <id>     Resume by prefix or Claude session UUID
 #   --keep <prefix>   Protect session from cleanup
 #   --unkeep <prefix> Remove protection
 #   --cleanup         Remove old workspaces (respects workday logic)
@@ -482,6 +482,24 @@ chmod +x ~/.local/bin/workspace-claude
 Add to `~/.zshrc` (or `~/.bashrc`):
 
 ```bash
+# Resolve Claude session UUID → workspace path via sessions-index.json
+_resolve_claude_session() {
+    local uuid="$1"
+    command -v jq &>/dev/null || return 1
+    for index in ~/.claude/projects/*/sessions-index.json; do
+        [[ -f "$index" ]] || continue
+        local path
+        path=$(jq -r --arg id "$uuid" \
+            '.entries[] | select(.sessionId == $id) | .projectPath' \
+            "$index" 2>/dev/null | head -1)
+        if [[ -n "$path" && "$path" != "null" && -d "$path" ]]; then
+            echo "$path"
+            return 0
+        fi
+    done
+    return 1
+}
+
 # Projects that use workspace isolation (paths relative to $HOME)
 WORKSPACE_ISOLATED_PROJECTS=(
     "projects/myproject"
@@ -490,6 +508,34 @@ WORKSPACE_ISOLATED_PROJECTS=(
 
 # Auto-redirect claude to workspace-claude for isolated projects
 claude() {
+    # --- UUID-Resume: auto-resolve workspace from Claude session UUID ---
+    local resume_uuid=""
+    local -a args=("$@")
+    local i
+    for ((i=1; i<=${#args[@]}; i++)); do
+        if [[ "${args[$i]}" == "--resume" || "${args[$i]}" == "-r" ]]; then
+            local next=$((i + 1))
+            if [[ $next -le ${#args[@]} ]] && [[ "${args[$next]}" =~ ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$ ]]; then
+                resume_uuid="${args[$next]}"
+            fi
+            break
+        fi
+    done
+
+    if [[ -n "$resume_uuid" ]]; then
+        local ws_path
+        ws_path=$(_resolve_claude_session "$resume_uuid")
+        if [[ -n "$ws_path" && -d "$ws_path" ]]; then
+            echo "🔄 Resuming in workspace: $(basename "$ws_path")"
+            cd "$ws_path"
+            eval "$(mise activate bash 2>/dev/null)" || true
+            direnv allow 2>/dev/null || true
+            command claude --dangerously-skip-permissions "$@"
+            return
+        fi
+    fi
+    # --- End UUID-Resume ---
+
     local home_relative="${PWD#$HOME/}"
 
     for project in "${WORKSPACE_ISOLATED_PROJECTS[@]}"; do
@@ -551,11 +597,20 @@ claude
 workspace-claude --branch fix/issue-123-bugfix
 ```
 
+### Session Resume
+
+```bash
+workspace-claude --sessions                   # List sessions with UUIDs
+workspace-claude --resume a8f5                # Resume by workspace prefix
+workspace-claude --resume 18fcd521-0457-...   # Resume by Claude session UUID
+claude --resume 18fcd521-0457-...             # Auto-resolves workspace from UUID
+```
+
 ### Workspace Management
 
 ```bash
 workspace-claude --list              # Show active workspaces
-workspace-claude --cleanup           # Remove old workspaces (>24h)
+workspace-claude --cleanup           # Remove old workspaces (workday-based)
 workspace-claude --remove session-20260121143052-a3f2
 ```
 
@@ -629,4 +684,4 @@ export BEADS_DIR="$PROJECT_ROOT/.beads"
 
 ---
 
-*Last updated: 2026-01-28*
+*Last updated: 2026-02-11*
