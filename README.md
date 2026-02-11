@@ -147,6 +147,26 @@ jj workspaces are "first-class citizens" - creating and managing them is seamles
 
 ---
 
+## New in v2.3 (Feb 2026)
+
+### Startup Summary
+
+When launching or resuming a workspace, you now get a full context overview:
+
+```
+📁 Workspace: /path/to/workspace
+📋 Beads: /path/.beads (central)
+🧠 Memory: symlinked → global (3 files)
+🐍 Python: .venv ready (3.12.8)
+🔀 jj: @kpqvuntx (on main)
+📄 CLAUDE.md: found
+🔧 Tools: mise 2025.1.0, direnv 2.34.0
+```
+
+This replaces the minimal 2-line output from previous versions and gives you immediate visibility into the workspace state before Claude starts.
+
+---
+
 ## New in v2.0 (Jan 2026)
 
 ### Session Resume
@@ -225,4 +245,4 @@ chmod +x ~/.local/bin/workspace-claude
 
 ---
 
-*Last updated: 2026-02-11*
+*Last updated: 2026-02-11 (v2.3.0)*

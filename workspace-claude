@@ -20,7 +20,7 @@
 
 set -euo pipefail
 
-WORKSPACE_CLAUDE_VERSION="2.2.0"
+WORKSPACE_CLAUDE_VERSION="2.3.0"
 WORKSPACE_CLAUDE_TESTED_WITH="2.1.19"
 
 # Auto-detect project root (first parent with .jj or .git)
@@ -495,14 +495,7 @@ resume_session() {
         update_session_meta "$workspace_path" "last_active" "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
     fi
 
-    echo "📁 Workspace: $workspace_path"
-
-    # Set BEADS_DIR if project has beads
-    if [[ -d "$PROJECT_ROOT/.beads" ]]; then
-        export BEADS_DIR="$PROJECT_ROOT/.beads"
-        echo "📋 Beads: $BEADS_DIR (central)"
-    fi
-
+    print_startup_summary "$workspace_path"
     echo ""
 
     cd "$workspace_path"
@@ -644,6 +637,9 @@ create_workspace() {
     find "$workspace_path/.claude" -name "*.py" -exec xattr -d com.apple.provenance {} \; 2>/dev/null || true
     find "$workspace_path/.claude" -name "*.sh" -exec xattr -d com.apple.provenance {} \; 2>/dev/null || true
 
+    # Link workspace memory to global memory (shared across all sessions)
+    setup_memory_symlink "$workspace_path"
+
     log_info "Workspace ready: $workspace_path"
     echo "$workspace_path"
 }
@@ -668,6 +664,119 @@ list_workspaces() {
     echo ""
     echo "jj workspaces:"
     (cd "$PROJECT_ROOT" && jj workspace update-stale 2>/dev/null; jj workspace list 2>/dev/null) || echo "  (not a jj repo)"
+}
+
+# Pre-create Claude project dir with memory symlink to global memory
+# This ensures all workspace sessions share one persistent memory store
+setup_memory_symlink() {
+    local workspace_path="$1"
+    local global_memory="$HOME/.claude/projects/$(echo "$HOME" | tr '/' '-')/memory"
+
+    # Only proceed if global memory exists
+    [[ -d "$global_memory" ]] || return 0
+
+    # Calculate Claude project dir for this workspace
+    local project_dir_name=$(echo "$workspace_path" | tr '/' '-')
+    local claude_project_dir="$HOME/.claude/projects/${project_dir_name}"
+    local memory_dir="${claude_project_dir}/memory"
+
+    mkdir -p "$claude_project_dir"
+
+    # If memory already exists as a real dir with content, skip
+    if [[ -d "$memory_dir" && ! -L "$memory_dir" ]]; then
+        local file_count=$(find "$memory_dir" -type f 2>/dev/null | wc -l | tr -d ' ')
+        if [[ "$file_count" -gt 0 ]]; then
+            log_warn "Memory dir has existing content, skipping symlink: $memory_dir"
+            return 0
+        fi
+        rmdir "$memory_dir" 2>/dev/null || return 0
+    fi
+
+    # Create symlink if not already one
+    if [[ ! -L "$memory_dir" ]]; then
+        ln -s "$global_memory" "$memory_dir"
+        log_info "Memory linked to global"
+    fi
+}
+
+print_startup_summary() {
+    local workspace_path="$1"
+
+    echo "📁 Workspace: $workspace_path"
+
+    # Beads
+    if [[ -d "$PROJECT_ROOT/.beads" ]]; then
+        export BEADS_DIR="$PROJECT_ROOT/.beads"
+        echo "📋 Beads: $BEADS_DIR (central)"
+    fi
+
+    # Memory
+    local claude_project_dir_name
+    claude_project_dir_name=$(echo "$workspace_path" | tr '/' '-')
+    local memory_dir="$HOME/.claude/projects/${claude_project_dir_name}/memory"
+    if [[ -L "$memory_dir" ]]; then
+        local file_count
+        file_count=$(find -L "$memory_dir" -type f 2>/dev/null | wc -l | tr -d ' ')
+        echo "🧠 Memory: symlinked → global ($file_count files)"
+    elif [[ -d "$memory_dir" ]]; then
+        local file_count
+        file_count=$(find "$memory_dir" -type f 2>/dev/null | wc -l | tr -d ' ')
+        echo "🧠 Memory: local ($file_count files)"
+    else
+        echo "🧠 Memory: not configured"
+    fi
+
+    # Python / Node environment
+    if [[ -f "$workspace_path/pyproject.toml" ]]; then
+        if [[ -d "$workspace_path/.venv" ]]; then
+            local py_version
+            py_version=$("$workspace_path/.venv/bin/python" --version 2>/dev/null | grep -o '[0-9]\+\.[0-9]\+\.[0-9]\+' || echo "?")
+            echo "🐍 Python: .venv ready ($py_version)"
+        else
+            echo "🐍 Python: missing .venv"
+        fi
+    elif [[ -f "$workspace_path/package.json" ]]; then
+        if [[ -d "$workspace_path/node_modules" ]]; then
+            local node_version
+            node_version=$(node --version 2>/dev/null || echo "?")
+            echo "📦 Node: node_modules ready ($node_version)"
+        else
+            echo "📦 Node: missing node_modules"
+        fi
+    fi
+
+    # jj info
+    if [[ -d "$workspace_path/.jj" ]] || [[ -d "$PROJECT_ROOT/.jj" ]]; then
+        local change_id bookmark_info jj_line
+        change_id=$(cd "$workspace_path" && jj log -r @ --no-graph -T 'change_id.short()' 2>/dev/null || echo "?")
+        bookmark_info=$(cd "$workspace_path" && jj log -r @ --no-graph -T 'bookmarks' 2>/dev/null || echo "")
+        jj_line="🔀 jj: @${change_id}"
+        if [[ -n "$bookmark_info" ]]; then
+            jj_line+=" (${bookmark_info})"
+        else
+            jj_line+=" (on ${BASE_REV:-main})"
+        fi
+        echo "$jj_line"
+    fi
+
+    # CLAUDE.md
+    if [[ -f "$workspace_path/CLAUDE.md" ]]; then
+        echo "📄 CLAUDE.md: found"
+    else
+        echo "📄 CLAUDE.md: not found"
+    fi
+
+    # Tools
+    local tools_parts=()
+    local mise_ver direnv_ver
+    mise_ver=$(mise --version 2>/dev/null | head -1 | grep -o '[0-9]\+\.[0-9]\+\.[0-9]\+' || true)
+    direnv_ver=$(direnv version 2>/dev/null || true)
+    [[ -n "$mise_ver" ]] && tools_parts+=("mise $mise_ver")
+    [[ -n "$direnv_ver" ]] && tools_parts+=("direnv $direnv_ver")
+    if [[ ${#tools_parts[@]} -gt 0 ]]; then
+        local IFS=', '
+        echo "🔧 Tools: ${tools_parts[*]}"
+    fi
 }
 
 remove_workspace() {
@@ -791,14 +900,7 @@ case "$ACTION" in
         fi
 
         echo ""
-        echo "📁 Workspace: $workspace_path"
-
-        # Set BEADS_DIR if project has beads
-        if [[ -d "$PROJECT_ROOT/.beads" ]]; then
-            export BEADS_DIR="$PROJECT_ROOT/.beads"
-            echo "📋 Beads: $BEADS_DIR (central)"
-        fi
-
+        print_startup_summary "$workspace_path"
         echo ""
 
         cd "$workspace_path"

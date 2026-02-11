@@ -56,6 +56,22 @@ The script handles macOS vs Linux differences:
 
 ---
 
+## [2.3.0] - 2026-02-11
+
+### Added
+- Enhanced startup summary via `print_startup_summary()` function
+- Shows memory status (symlinked/local/not configured + file count)
+- Shows Python/Node environment status with version
+- Shows jj change-id and bookmark info
+- Shows CLAUDE.md presence
+- Shows mise/direnv tool versions
+
+### Changed
+- `run` and `resume_session()` both use shared `print_startup_summary()` instead of manual echo lines
+- Startup output now shows 7 status lines instead of 2
+
+---
+
 ## [2.2.0] - 2026-02-11
 
 ### Added
