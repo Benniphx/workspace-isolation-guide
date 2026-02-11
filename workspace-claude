@@ -230,6 +230,34 @@ find_workspace_by_prefix() {
     echo "${matches[0]}"
 }
 
+# Resolve short UUID prefix → full session UUID via sessions-index.json
+resolve_session_uuid_prefix() {
+    local prefix="$1"
+    local claude_projects_dir="$HOME/.claude/projects"
+    command -v jq &>/dev/null || { log_error "jq required for UUID resolution"; return 1; }
+    local matches=()
+    for index_file in "$claude_projects_dir"/*/sessions-index.json; do
+        [[ -f "$index_file" ]] || continue
+        while IFS= read -r uuid; do
+            [[ -n "$uuid" ]] && matches+=("$uuid")
+        done < <(jq -r --arg prefix "$prefix" \
+            '.entries[] | select(.sessionId | startswith($prefix)) | .sessionId' \
+            "$index_file" 2>/dev/null)
+    done
+
+    if [[ ${#matches[@]} -eq 0 ]]; then
+        return 1
+    elif [[ ${#matches[@]} -gt 1 ]]; then
+        log_error "Multiple sessions match UUID prefix '$prefix':"
+        for m in "${matches[@]}"; do
+            echo "  $m" >&2
+        done
+        return 1
+    fi
+
+    echo "${matches[0]}"
+}
+
 # Resolve Claude session UUID → workspace path via sessions-index.json
 resolve_session_uuid() {
     local uuid="$1"
@@ -440,7 +468,18 @@ resume_session() {
             return 1
         }
     else
-        workspace_path=$(find_workspace_by_prefix "$identifier") || return 1
+        # Try workspace prefix first, fall back to UUID prefix
+        workspace_path=$(find_workspace_by_prefix "$identifier" 2>/dev/null) || {
+            # Not a workspace prefix - try as UUID prefix
+            session_uuid=$(resolve_session_uuid_prefix "$identifier") || {
+                log_error "No workspace or session found for: $identifier"
+                return 1
+            }
+            workspace_path=$(resolve_session_uuid "$session_uuid") || {
+                log_error "No workspace found for session UUID: $session_uuid"
+                return 1
+            }
+        }
     fi
 
     local session_id=$(basename "$workspace_path")
@@ -721,7 +760,7 @@ case "$ACTION" in
         list_sessions
         ;;
     resume)
-        resume_session "$RESUME_PREFIX" "${CLAUDE_ARGS[@]}"
+        resume_session "$RESUME_PREFIX" ${CLAUDE_ARGS[@]+"${CLAUDE_ARGS[@]}"}
         ;;
     keep)
         keep_session "$KEEP_PREFIX" "true"
