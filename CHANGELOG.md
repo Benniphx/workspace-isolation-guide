@@ -59,19 +59,17 @@ The script handles macOS vs Linux differences:
 ## [2.3.0] - 2026-02-11
 
 ### Added
-- Enhanced startup summary via `print_startup_summary()` function
-- Shows project name, session ID, base revision, and optional UUID
-- Shows memory status (symlinked/local/not configured + file count)
-- Shows Python/Node environment status with version
-- Shows jj change-id and bookmark info
-- Shows CLAUDE.md presence
-- Shows mise/direnv tool versions
+- Single-line progress chain: `setup ·· cleanup ·· fetch ·· sync ·· ready`
+- Unicode box summary with session, workspace, memory, python, jj, tools
+- `progress_step()` / `progress_done()` for live setup progress
+- `box_open()` / `box_line()` / `box_close()` for summary display
 
 ### Changed
-- `run` and `resume_session()` both use shared `print_startup_summary()` instead of separate header blocks
-- Unified output format: all lines use consistent `emoji + aligned label + value` style
-- Removed multi-line header blocks from both run and resume paths
-- Fixed Tools line comma spacing (was missing space after comma)
+- Setup progress condensed from multi-line logs to single dot-chain
+- Summary now uses box frame (`┌ ─ │ └`) instead of emoji-prefixed lines
+- Removed all redundant duplicate info (memory, python, workspace path)
+- `log_info` replaced by `progress_step` (setup) and `log_msg` (standalone ops)
+- Warnings/errors use plain `⚠`/`✖` prefix
 
 ---
 

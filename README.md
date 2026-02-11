@@ -151,21 +151,24 @@ jj workspaces are "first-class citizens" - creating and managing them is seamles
 
 ### Startup Summary
 
-When launching or resuming a workspace, you get a unified context overview:
+Setup progress shows as a single dot-chain, followed by a summary box:
 
 ```
-🚀 Project:   spex
-🏷️  Session:   20260211151717-e94c (base: main)
-📁 Workspace: /path/to/workspace
-📋 Beads:     /path/.beads (central)
-🧠 Memory:    symlinked → global (4 files)
-🐍 Python:    .venv ready (3.13.6)
-🔀 jj:        @kpqvuntx (on main)
-📄 CLAUDE.md: found
-🔧 Tools:     mise 2026.2.9, direnv 2.37.1
+  setup ·· cleanup ·· create ·· fetch ·· sync ·· uv sync ·· memory ·· ready
+
+  ┌ spex ──────────────────────────────────────
+  │ Session    20260211151717-e94c (main)
+  │ Workspace  /path/to/workspace
+  │ Beads      /path/.beads
+  │ Memory     global symlink (4 files)
+  │ Python     3.13.6
+  │ jj         @kpqvuntx (on main)
+  │ CLAUDE.md  ✓
+  │ Tools      mise 2026.2.9, direnv 2.37.1
+  └────────────────────────────────────────
 ```
 
-All lines use the same `emoji + label + value` format for a clean, consistent look.
+The progress line updates live as each step completes. The box summarizes the workspace state.
 
 ---
 

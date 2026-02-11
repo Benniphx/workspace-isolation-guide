@@ -41,11 +41,26 @@ PROJECT_NAME="$(basename "$PROJECT_ROOT")"
 WORKSPACES_DIR="${PROJECT_ROOT}-workspaces"
 KEEP_WORKDAYS="${KEEP_WORKDAYS:-14}"  # Keep sessions from last N workdays (Mon-Fri)
 
-# Unified log format: emoji + left-aligned label + message
-# Usage: log_step "emoji" "Label" "message"
-log_step() { printf '%s %-10s %s\n' "$1" "$2:" "$3" >&2; }
-log_warn() { printf '⚠️  %-10s %s\n' "Warning:" "$1" >&2; }
-log_error() { printf '❌ %-10s %s\n' "Error:" "$1" >&2; }
+# Progress: single-line dot-chain shown live during setup
+_progress_started=false
+progress_step() {
+    if [[ "$_progress_started" == "false" ]]; then
+        printf '\n  setup' >&2
+        _progress_started=true
+    fi
+    printf ' ·· %s' "$1" >&2
+}
+progress_done() { printf '\n' >&2; _progress_started=false; }
+
+# Summary box
+box_open()  { printf '\n  ┌ %s ' "$1" >&2; printf '─%.0s' {1..38} >&2; printf '\n' >&2; }
+box_line()  { printf '  │ %-10s %s\n' "$1" "$2" >&2; }
+box_close() { printf '  └' >&2; printf '─%.0s' {1..40} >&2; printf '\n\n' >&2; }
+
+# Standalone messages (for non-setup operations like --keep, --remove)
+log_msg()   { printf '  %s\n' "$1" >&2; }
+log_warn()  { printf '  ⚠ %s\n' "$1" >&2; }
+log_error() { printf '  ✖ %s\n' "$1" >&2; }
 
 show_help() {
     cat << 'EOF'
@@ -298,9 +313,9 @@ keep_session() {
     update_session_meta "$workspace_path" "last_active" "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
     if [[ "$keep_value" == "true" ]]; then
-        log_step "🔒" "Keep" "$(basename "$workspace_path")"
+        log_msg "Protected: $(basename "$workspace_path")"
     else
-        log_step "🔓" "Unkeep" "$(basename "$workspace_path")"
+        log_msg "Unprotected: $(basename "$workspace_path")"
     fi
 }
 
@@ -492,7 +507,6 @@ resume_session() {
     fi
 
     print_startup_summary "$workspace_path" "${session_id#session-}" "" "$session_uuid"
-    echo "" >&2
 
     cd "$workspace_path"
     eval "$(mise activate bash 2>/dev/null)" || true
@@ -519,8 +533,7 @@ cleanup_old_workspaces() {
     local cutoff_ts
     cutoff_ts=$(calculate_cutoff_date "$KEEP_WORKDAYS")
 
-    log_step "🧹" "Cleanup" "keeping sessions from last $KEEP_WORKDAYS workday(s)"
-    log_step "📅" "Cutoff" "$(date -r "$cutoff_ts" +%Y-%m-%d 2>/dev/null || date -d "@$cutoff_ts" +%Y-%m-%d 2>/dev/null)"
+    progress_step "cleanup"
 
     for ws in "$WORKSPACES_DIR"/session-*; do
         [[ -d "$ws" ]] || continue
@@ -529,7 +542,6 @@ cleanup_old_workspaces() {
         # Check keep flag in metadata
         local keep_flag=$(read_session_meta "$ws" "keep")
         if [[ "$keep_flag" == "true" ]]; then
-            log_step "🔒" "Keep" "$ws_name"
             ((skipped++)) || true
             continue
         fi
@@ -548,15 +560,11 @@ cleanup_old_workspaces() {
         fi
 
         if [[ $ws_ts -lt $cutoff_ts ]]; then
-            log_step "🗑️ " "Remove" "$ws_name"
             (cd "$PROJECT_ROOT" && jj workspace forget "$ws_name" 2>/dev/null || true)
             rm -rf "$ws"
             ((count++)) || true
         fi
     done
-
-    [[ $count -gt 0 ]] && log_step "🧹" "Cleanup" "$count workspace(s) removed"
-    [[ $skipped -gt 0 ]] && log_step "🔒" "Keep" "$skipped workspace(s) skipped"
     return 0
 }
 
@@ -571,12 +579,13 @@ create_workspace() {
     cleanup_old_workspaces
 
     if [[ -d "$workspace_path" ]]; then
-        log_step "📁" "Workspace" "exists: $workspace_name"
+        progress_step "exists"
+        progress_done
         echo "$workspace_path"
         return 0
     fi
 
-    log_step "🔨" "Create" "$workspace_name (based on $base_rev)"
+    progress_step "create"
 
     cd "$PROJECT_ROOT"
 
@@ -584,11 +593,11 @@ create_workspace() {
     # Note: jj config `snapshot.auto-update-stale = true` handles this globally,
     # but we keep explicit recovery as defense-in-depth for safety.
     if jj st 2>&1 | grep -q "working copy is stale"; then
-        log_step "🔄" "Recover" "stale working copy"
+        progress_step "recover"
         jj workspace update-stale 2>/dev/null || log_warn "Could not update stale working copy"
     fi
 
-    log_step "📥" "Fetch" "latest from remote"
+    progress_step "fetch"
     jj git fetch 2>/dev/null || {
         # Fallback: fetch without working copy interaction
         jj --ignore-working-copy git fetch 2>/dev/null || log_warn "Could not fetch"
@@ -596,13 +605,14 @@ create_workspace() {
 
     # Update local main bookmark to match origin (jj fetch doesn't do this automatically)
     if [[ "$base_rev" == "main" ]]; then
-        log_step "🔄" "Sync" "main → origin"
+        progress_step "sync"
         jj bookmark set main -r main@origin 2>/dev/null || \
             jj --ignore-working-copy bookmark set main -r main@origin 2>/dev/null || \
             log_warn "Could not sync main"
     fi
 
     jj workspace add "$workspace_path" -r "$base_rev" 2>/dev/null || {
+        progress_done
         log_error "Failed to create workspace"
         return 1
     }
@@ -619,12 +629,12 @@ create_workspace() {
 
     # Setup based on project type
     if [[ -f "pyproject.toml" ]]; then
-        log_step "🐍" "Python" "running uv sync"
+        progress_step "uv sync"
         mise trust "$workspace_path" 2>/dev/null || true
         eval "$(mise activate bash 2>/dev/null)" || true
         uv sync >/dev/null 2>&1 || log_warn "uv sync failed"
     elif [[ -f "package.json" ]]; then
-        log_step "📦" "Node" "running npm install"
+        progress_step "npm install"
         npm install >/dev/null 2>&1 || log_warn "npm install failed"
     fi
 
@@ -636,7 +646,8 @@ create_workspace() {
     # Link workspace memory to global memory (shared across all sessions)
     setup_memory_symlink "$workspace_path"
 
-    log_step "✅" "Ready" "$workspace_path"
+    progress_step "ready"
+    progress_done
     echo "$workspace_path"
 }
 
@@ -691,7 +702,7 @@ setup_memory_symlink() {
     # Create symlink if not already one
     if [[ ! -L "$memory_dir" ]]; then
         ln -s "$global_memory" "$memory_dir"
-        log_step "🧠" "Memory" "linked to global"
+        progress_step "memory"
     fi
 }
 
@@ -701,24 +712,24 @@ print_startup_summary() {
     local base_rev="${3:-}"
     local session_uuid="${4:-}"
 
-    echo "" >&2
+    # Box header
+    box_open "$PROJECT_NAME"
 
-    # Project + Session
-    log_step "🚀" "Project" "$PROJECT_NAME"
+    # Session
     if [[ -n "$session_label" ]]; then
         local session_info="$session_label"
-        [[ -n "$base_rev" ]] && session_info+=" (base: $base_rev)"
+        [[ -n "$base_rev" ]] && session_info+=" ($base_rev)"
         [[ -n "$session_uuid" ]] && session_info+=" [${session_uuid:0:8}…]"
-        log_step "🏷️ " "Session" "$session_info"
+        box_line "Session" "$session_info"
     fi
 
     # Workspace
-    log_step "📁" "Workspace" "$workspace_path"
+    box_line "Workspace" "$workspace_path"
 
     # Beads
     if [[ -d "$PROJECT_ROOT/.beads" ]]; then
         export BEADS_DIR="$PROJECT_ROOT/.beads"
-        log_step "📋" "Beads" "$BEADS_DIR (central)"
+        box_line "Beads" "$BEADS_DIR"
     fi
 
     # Memory
@@ -728,13 +739,13 @@ print_startup_summary() {
     if [[ -L "$memory_dir" ]]; then
         local file_count
         file_count=$(find -L "$memory_dir" -type f 2>/dev/null | wc -l | tr -d ' ')
-        log_step "🧠" "Memory" "symlinked → global ($file_count files)"
+        box_line "Memory" "global symlink ($file_count files)"
     elif [[ -d "$memory_dir" ]]; then
         local file_count
         file_count=$(find "$memory_dir" -type f 2>/dev/null | wc -l | tr -d ' ')
-        log_step "🧠" "Memory" "local ($file_count files)"
+        box_line "Memory" "local ($file_count files)"
     else
-        log_step "🧠" "Memory" "not configured"
+        box_line "Memory" "–"
     fi
 
     # Python / Node environment
@@ -742,17 +753,17 @@ print_startup_summary() {
         if [[ -d "$workspace_path/.venv" ]]; then
             local py_version
             py_version=$("$workspace_path/.venv/bin/python" --version 2>/dev/null | grep -o '[0-9]\+\.[0-9]\+\.[0-9]\+' || echo "?")
-            log_step "🐍" "Python" ".venv ready ($py_version)"
+            box_line "Python" "$py_version"
         else
-            log_step "🐍" "Python" "missing .venv"
+            box_line "Python" "missing .venv"
         fi
     elif [[ -f "$workspace_path/package.json" ]]; then
         if [[ -d "$workspace_path/node_modules" ]]; then
             local node_version
             node_version=$(node --version 2>/dev/null || echo "?")
-            log_step "📦" "Node" "node_modules ready ($node_version)"
+            box_line "Node" "$node_version"
         else
-            log_step "📦" "Node" "missing node_modules"
+            box_line "Node" "missing node_modules"
         fi
     fi
 
@@ -767,14 +778,14 @@ print_startup_summary() {
         else
             jj_info+=" (on ${BASE_REV:-main})"
         fi
-        log_step "🔀" "jj" "$jj_info"
+        box_line "jj" "$jj_info"
     fi
 
     # CLAUDE.md
     if [[ -f "$workspace_path/CLAUDE.md" ]]; then
-        log_step "📄" "CLAUDE.md" "found"
+        box_line "CLAUDE.md" "✓"
     else
-        log_step "📄" "CLAUDE.md" "not found"
+        box_line "CLAUDE.md" "–"
     fi
 
     # Tools
@@ -785,8 +796,10 @@ print_startup_summary() {
     [[ -n "$mise_ver" ]] && tools_parts+=("mise $mise_ver")
     [[ -n "$direnv_ver" ]] && tools_parts+=("direnv $direnv_ver")
     if [[ ${#tools_parts[@]} -gt 0 ]]; then
-        log_step "🔧" "Tools" "$(printf '%s' "${tools_parts[0]}")$(printf ', %s' "${tools_parts[@]:1}" 2>/dev/null || true)"
+        box_line "Tools" "$(printf '%s' "${tools_parts[0]}")$(printf ', %s' "${tools_parts[@]:1}" 2>/dev/null || true)"
     fi
+
+    box_close
 }
 
 remove_workspace() {
@@ -798,10 +811,10 @@ remove_workspace() {
         return 1
     fi
 
-    log_step "🗑️ " "Remove" "$workspace_name"
+    log_msg "Removing: $workspace_name"
     (cd "$PROJECT_ROOT" && jj workspace forget "$workspace_name" 2>/dev/null || true)
     rm -rf "$workspace_path"
-    log_step "✅" "Done" "workspace removed"
+    log_msg "Done"
 }
 
 # Parse arguments
@@ -904,7 +917,6 @@ case "$ACTION" in
         fi
 
         print_startup_summary "$workspace_path" "${session_id:0:19}" "$BASE_REV"
-        echo "" >&2
 
         cd "$workspace_path"
         eval "$(mise activate bash 2>/dev/null)" || true
