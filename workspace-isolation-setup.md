@@ -72,8 +72,8 @@ _resolve_claude_session() {
         [[ -f "$index" ]] || continue
         local path
         path=$(jq -r --arg id "$uuid" \
-            '.entries[] | select(.sessionId == $id) | .projectPath' \
-            "$index" 2>/dev/null | head -1)
+            '[.entries[] | select(.sessionId == $id) | .projectPath] | first // empty' \
+            "$index" 2>/dev/null)
         if [[ -n "$path" && "$path" != "null" && -d "$path" ]]; then
             echo "$path"
             return 0
@@ -244,6 +244,28 @@ cd ~/Documents/project && jj workspace list
 jj workspace forget session-XXXXX
 ```
 
+### `claude --resume` Fails: "command not found: head"
+
+**Symptom:** `claude --resume <UUID>` fails with `_resolve_claude_session:8: command not found: head` (repeated 8x).
+
+**Cause:** Powerlevel10k Instant Prompt redirects stdout/stderr during zsh init, while PATH is not yet fully set. `head` is an external command in `/usr/bin/` and unavailable at that point.
+
+**Fix in `~/.zshrc`** (`_resolve_claude_session` function, ~line 164-166):
+
+```zsh
+# Before (external command dependency):
+path=$(jq -r --arg id "$uuid" \
+    '.entries[] | select(.sessionId == $id) | .projectPath' \
+    "$index" 2>/dev/null | head -1)
+
+# After (jq-native, no external dependency):
+path=$(jq -r --arg id "$uuid" \
+    '[.entries[] | select(.sessionId == $id) | .projectPath] | first // empty' \
+    "$index" 2>/dev/null)
+```
+
+**Why:** jq-native `first // empty` replaces `head -1` entirely -- no external dependency in the pipeline, robust against PATH issues during p10k Instant Prompt.
+
 ### Wrong Claude Version
 
 If mise-managed node shadows system Claude:
@@ -266,4 +288,4 @@ export BEADS_DIR="$PROJECT_ROOT/.beads"
 
 ---
 
-*Last updated: 2026-02-11 (v2.3.0)*
+*Last updated: 2026-02-17 (v2.3.0)*
