@@ -1,6 +1,6 @@
 #!/bin/bash
 # workspace-claude - Launch Claude in isolated jj workspace
-# Version: 2.2.0 (2026-02-11)
+# Version: 2.3.0 (2026-02-11)
 # Tested with: Claude Code 2.1.19
 # Source: https://github.com/Benniphx/workspace-isolation-guide
 #
