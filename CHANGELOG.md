@@ -2,8 +2,64 @@
 
 ## Compatibility
 
-**Tested with Claude Code:** 2.1.19
-**Last checked:** 2026-02-11
+**Tested with Claude Code:** 2.1.50
+**Last checked:** 2026-02-23
+
+---
+
+## [2.4.0] - 2026-02-23
+
+### Added: Native Claude Code Hook Integration (v2.1.50+)
+
+Claude Code v2.1.50 introduced `WorktreeCreate` / `WorktreeRemove` hooks that let custom VCS
+(jj, SVN, Perforce) replace the default `git worktree` backend. We now use these hooks to
+integrate jj natively into Claude Code's built-in isolation features.
+
+**New files in `~/.claude/hooks/`:**
+
+| Script | Hook | Purpose |
+|--------|------|---------|
+| `worktree-create.sh` | WorktreeCreate | `jj workspace add` statt `git worktree add` + fetch/main-sync |
+| `worktree-remove.sh` | WorktreeRemove | `jj workspace forget` + `rm -rf` beim Cleanup |
+| `pre-push-check.sh` | PreToolUse (Bash) | Zeigt Pre-Push-Checkliste bei `jj git push` |
+| `task-completed.sh` | TaskCompleted | Reminder bei Team-Task-Completion |
+
+**New hooks in `~/.claude/settings.json`:** WorktreeCreate, WorktreeRemove, PreToolUse, TaskCompleted
+
+### What this enables
+
+1. **Subagent Isolation mit jj:** `isolation: "worktree"` in Agent-Definitionen und
+   `isolation: "worktree"` im Task Tool nutzen jetzt automatisch jj workspace add.
+   Git-worktrees werden nicht mehr erstellt.
+
+2. **Automatisches Cleanup:** Wenn ein Subagent keine Änderungen macht, entfernt Claude Code
+   den Worktree automatisch → WorktreeRemove Hook räumt jj workspace auf.
+
+3. **Pre-Push-Enforcement:** Bei jedem `jj git push` erscheint die Pre-Push-Checkliste
+   als stderr-Output (non-blocking, nur als Reminder).
+
+4. **TaskCompleted Quality Gate:** Bei Team-Workflows erscheint nach jeder Task-Completion
+   ein Reminder für pre-push checks und self-improve.
+
+### Was workspace-claude weiterhin macht (nicht redundant)
+
+workspace-claude bleibt für **manuelle Sessions** zuständig:
+- Session-Metadaten, --keep, --cleanup, --sessions
+- main-Sync vor Workspace-Erstellung (Hooks machen das auch, aber erst on-demand)
+- .venv / npm install Setup
+- Workday-basiertes Cleanup
+- Memory-Symlink
+
+**Trennung:**
+- `workspace-claude` → manuelle Sessions (User tippt `claude` oder `workspace-claude`)
+- WorktreeCreate Hook → Subagent-Isolation (Claude Code intern via `isolation: "worktree"`)
+
+### Migration
+
+Kein breaking change. Bestehende Workspaces laufen weiter. Die Hooks greifen nur bei
+neuen Worktrees die über Claude Code's Native-Features erstellt werden.
+
+---
 
 ### Platform Support
 

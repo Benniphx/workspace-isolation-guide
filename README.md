@@ -124,6 +124,33 @@ exec "$CLAUDE_BIN" "$@"
 
 ---
 
+## Native Claude Code Integration (v2.1.50+)
+
+Claude Code v2.1.50 added `WorktreeCreate` / `WorktreeRemove` hooks — custom VCS can now hook
+into Claude Code's built-in `--worktree` flag and `isolation: "worktree"` parameter.
+
+We use these hooks to make **subagent isolation** work with jj out of the box:
+
+```yaml
+# In a .claude/agents/my-agent.md or via Task tool:
+isolation: worktree
+# → Claude Code calls WorktreeCreate hook
+# → Hook runs: jj workspace add /tmp/claude-worktree-<name>
+# → Subagent works in isolated jj workspace
+# → On finish (no changes): WorktreeRemove hook runs jj workspace forget + rm -rf
+```
+
+**Two separate code paths:**
+
+| Path | Trigger | Handles |
+|------|---------|---------|
+| `workspace-claude` | User runs `claude` or `workspace-claude` | Manual sessions, session metadata, .venv, cleanup |
+| WorktreeCreate Hook | Claude Code spawns subagent with `isolation: "worktree"` | Subagent isolation (temporary, auto-cleaned) |
+
+The hooks live in `~/.claude/hooks/` and are registered in `~/.claude/settings.json`.
+
+---
+
 ## Why jj Instead of Git Worktrees?
 
 | Feature | Git Worktrees | jj Workspaces |
@@ -250,4 +277,4 @@ chmod +x ~/.local/bin/workspace-claude
 
 ---
 
-*Last updated: 2026-02-11 (v2.3.0)*
+*Last updated: 2026-02-23 (v2.4.0)*
