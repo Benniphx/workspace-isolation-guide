@@ -20,8 +20,8 @@
 
 set -euo pipefail
 
-WORKSPACE_CLAUDE_VERSION="2.3.0"
-WORKSPACE_CLAUDE_TESTED_WITH="2.1.19"
+WORKSPACE_CLAUDE_VERSION="2.4.1"
+WORKSPACE_CLAUDE_TESTED_WITH="2.1.56"
 
 # Auto-detect project root (first parent with .jj or .git)
 find_project_root() {
@@ -61,6 +61,16 @@ box_close() { printf '  └' >&2; printf '─%.0s' {1..40} >&2; printf '\n\n' >&
 log_msg()   { printf '  %s\n' "$1" >&2; }
 log_warn()  { printf '  ⚠ %s\n' "$1" >&2; }
 log_error() { printf '  ✖ %s\n' "$1" >&2; }
+
+# Pre-start hook: source ~/.local/bin/workspace-claude-prehook if present.
+# The hook can append "Label|Value" entries to _PREHOOK_LINES for the startup box
+# and run any setup logic (fetching repos, checking states, etc.).
+_PREHOOK_LINES=()
+_run_prehook() {
+    local hook="$HOME/.local/bin/workspace-claude-prehook"
+    # shellcheck source=/dev/null
+    [[ -f "$hook" ]] && source "$hook" || true
+}
 
 show_help() {
     cat << 'EOF'
@@ -506,6 +516,7 @@ resume_session() {
         update_session_meta "$workspace_path" "last_active" "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
     fi
 
+    _run_prehook
     print_startup_summary "$workspace_path" "${session_id#session-}" "" "$session_uuid"
 
     cd "$workspace_path"
@@ -799,6 +810,12 @@ print_startup_summary() {
         box_line "Tools" "$(printf '%s' "${tools_parts[0]}")$(printf ', %s' "${tools_parts[@]:1}" 2>/dev/null || true)"
     fi
 
+    # Extra lines from pre-start hook (Label|Value pairs)
+    local _phl
+    for _phl in "${_PREHOOK_LINES[@]+"${_PREHOOK_LINES[@]}"}"; do
+        box_line "${_phl%%|*}" "${_phl#*|}"
+    done
+
     box_close
 }
 
@@ -908,6 +925,8 @@ case "$ACTION" in
         ;;
     run)
         session_id="$(date +%Y%m%d%H%M%S)-$(openssl rand -hex 4)"
+
+        _run_prehook
 
         workspace_path=$(create_workspace "$session_id" "$BASE_REV")
 
